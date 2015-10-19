@@ -35,7 +35,7 @@ class PluginConfiguration(object):
         """
         Initializes ``PluginConfiguration`` attributes.
 
-        self._endpoints: A dict of Docker API endpoint expressions mapping to
+        self._endpoints: A dict of Kubernetes API endpoint expressions mapping to
             dicts ``pre`` and ``post`` adapter lists. Each adapter in the adapters
             references the ``_adapters`` attribute.
 
@@ -165,7 +165,7 @@ class EndpointConfiguration(namedtuple("EndpointConfiguration", ["pre", "post"])
     """
     A representation of the configured adapters for an endpoint.
 
-    :param pre: A adapter ``list`` to call before passing this call to Docker.
+    :param pre: A adapter ``list`` to call before passing this call to Kubernetes.
 
-    :param post: A adapter ``list`` to call after passing this call to Docker.
+    :param post: A adapter ``list`` to call after passing this call to Kubernetes.
     """

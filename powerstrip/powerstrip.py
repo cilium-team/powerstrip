@@ -18,13 +18,13 @@ import urlparse
 
 class NoPostHooks(Exception):
     """
-    Do not run any post-hooks, because of an incompatible Docker response type
+    Do not run any post-hooks, because of an incompatible Kubernetes response type
     (streaming/hijacked or chunked).
     """
 
-class DockerProxyClient(proxy.ProxyClient):
+class KubernetesProxyClient(proxy.ProxyClient):
     """
-    An HTTP proxy which knows how to break HTTP just right so that Docker
+    An HTTP proxy which knows how to break HTTP just right so that Kubernetes
     stream (attach/events) API calls work.
 
     self.http: A boolean which reflects whether the connection is in HTTP mode
@@ -46,7 +46,7 @@ class DockerProxyClient(proxy.ProxyClient):
     def setStreamingMode(self, streamingMode):
         """
         Allow anyone with a reference to us to toggle on/off streaming mode.
-        Useful when we have no post-hooks (and no indication from Docker that
+        Useful when we have no post-hooks (and no indication from Kubernetes that
         it's sending packets of JSON e.g. with build) and we want to avoid
         buffering slow responses in memory.
         """
@@ -137,8 +137,8 @@ class DockerProxyClient(proxy.ProxyClient):
 
 
 
-class DockerProxyClientFactory(proxy.ProxyClientFactory):
-    protocol = DockerProxyClient
+class KubernetesProxyClientFactory(proxy.ProxyClientFactory):
+    protocol = KubernetesProxyClient
     _listener = None
     def onCreate(self, d):
         self._listener = d
@@ -159,16 +159,16 @@ class DockerProxyClientFactory(proxy.ProxyClientFactory):
 
 
 
-class DockerProxy(proxy.ReverseProxyResource):
-    proxyClientFactoryClass = DockerProxyClientFactory
+class KubernetesProxy(proxy.ReverseProxyResource):
+    proxyClientFactoryClass = KubernetesProxyClientFactory
 
 
-    def __init__(self, dockerAddr=None, dockerPort=None, dockerSocket=None,
+    def __init__(self, kubeAddr=None, kubePort=None, kubeSocket=None,
             path='', reactor=reactor, config=None):
         """
-        A docker proxy resource which knows how to connect to real Docker
-        daemon either via socket (dockerSocket specified) or address + port for
-        TCP connection (dockerAddr + dockerPort specified).
+        A kubernetes proxy resource which knows how to connect to real Kubernetes
+        daemon either via socket (kubeSocket specified) or address + port for
+        TCP connection (kubeAddr + kubePort specified).
         """
         if config is None:
             # Try to get the configuration from the default place on the
@@ -179,12 +179,12 @@ class DockerProxy(proxy.ReverseProxyResource):
         self.config.read_and_parse()
         self.parser = EndpointParser(self.config)
         Resource.__init__(self)
-        self.host = dockerAddr
-        self.port = dockerPort
-        self.socket = dockerSocket
+        self.host = kubeAddr
+        self.port = kubePort
+        self.socket = kubeSocket
         self.path = path
         self.reactor = reactor
-        proxy.ReverseProxyResource.__init__(self, dockerAddr, dockerPort, path, reactor) # NB dockerAddr is not actually used
+        proxy.ReverseProxyResource.__init__(self, kubeAddr, kubePort, path, reactor) # NB dockerAddr is not actually used
         self.agent = Agent(reactor) # no connectionpool
         self.client = HTTPClient(self.agent)
 
@@ -201,7 +201,9 @@ class DockerProxy(proxy.ReverseProxyResource):
             skipPreHooks = True
             originalRequestBody = None
         else:
-            originalRequestBody = None
+            originalRequestBody = request.content.read()
+            request.content.seek(0) # hee hee
+            # originalRequestBody = None
         preHooks = []
         postHooks = []
         d = defer.succeed(None)
@@ -234,7 +236,7 @@ class DockerProxy(proxy.ReverseProxyResource):
                 d.addCallback(callPreHook, hookURL=hookURL)
                 d.addCallback(treq.json_content)
         def doneAllPrehooks(result):
-            # Finally pass through the request to actual Docker.  For now we
+            # Finally pass through the request to actual Kubernetes.  For now we
             # mutate request in-place in such a way that ReverseProxyResource
             # understands it.
             if result is not None:
@@ -309,7 +311,7 @@ class DockerProxy(proxy.ReverseProxyResource):
             hookURL = self.config.adapter_uri(postHook)
             d.addCallback(callPostHook, hookURL=hookURL)
             d.addCallback(treq.json_content)
-        def sendFinalResponseToClient(result):            
+        def sendFinalResponseToClient(result):
             resultBody = result["ModifiedServerResponse"]["Body"].encode("utf-8")
             # Update the Content-Length, since we're modifying the request object in-place.
             request.responseHeaders.setRawHeaders(
@@ -333,11 +335,11 @@ class DockerProxy(proxy.ReverseProxyResource):
         proxyArgs = (self.host, self.port, self.socket, self.path + '/' + urlquote(path, safe=""),
                      self.reactor)
         #if not request.postpath:
-        resource = DockerProxy(*proxyArgs, config=self.config)
+        resource = KubernetesProxy(*proxyArgs, config=self.config)
         return resource
 
 
 class ServerProtocolFactory(server.Site):
-    def __init__(self, dockerAddr=None, dockerPort=None, dockerSocket=None, config=None):
-        self.root = DockerProxy(dockerAddr, dockerPort, dockerSocket, config=config)
+    def __init__(self, kubeAddr=None, kubePort=None, kubeSocket=None, config=None):
+        self.root = KubernetesProxy(kubeAddr, kubePort, kubeSocket, config=config)
         server.Site.__init__(self, self.root)

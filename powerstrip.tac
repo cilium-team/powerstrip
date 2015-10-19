@@ -7,22 +7,22 @@ from powerstrip.powerstrip import ServerProtocolFactory
 
 application = service.Application("Powerstrip")
 
-DOCKER_HOST = os.environ.get('DOCKER_HOST')
-if DOCKER_HOST is None:
-    # Default to assuming we've got a Docker socket bind-mounted into a
+KUBE_SERVER = os.environ.get('KUBE_SERVER')
+if KUBE_SERVER is None:
+    # Default to assuming we've got a Kubernetes socket bind-mounted into a
     # container we're running in.
-    DOCKER_HOST = "unix:///var/run/docker.sock"
-if "://" not in DOCKER_HOST:
-    DOCKER_HOST = "tcp://" + DOCKER_HOST
-if DOCKER_HOST.startswith("tcp://"):
-    parsed = urlparse(DOCKER_HOST)
-    dockerAPI = ServerProtocolFactory(dockerAddr=parsed.hostname,
-        dockerPort=parsed.port)
-elif DOCKER_HOST.startswith("unix://"):
-    socketPath = DOCKER_HOST[len("unix://"):]
-    dockerAPI = ServerProtocolFactory(dockerSocket=socketPath)
-#logged = TrafficLoggingFactory(dockerAPI, "api-")
-dockerServer = internet.TCPServer(2375, dockerAPI, interface='0.0.0.0')
-dockerServer.setServiceParent(application)
+    KUBE_SERVER = "tcp://localhost:8080"
+if "://" not in KUBE_SERVER:
+    KUBE_SERVER = "tcp://" + KUBE_SERVER
+if KUBE_SERVER.startswith("tcp://"):
+    parsed = urlparse(KUBE_SERVER)
+    kubeAPI = ServerProtocolFactory(kubeAddr=parsed.hostname,
+        kubePort=parsed.port)
+elif KUBE_SERVER.startswith("unix://"):
+    socketPath = KUBE_SERVER[len("unix://"):]
+    kubeAPI = ServerProtocolFactory(kubeSocket=socketPath)
+#logged = TrafficLoggingFactory(kubeAPI, "api-")
+kubeServer = internet.TCPServer(8080, kubeAPI, interface='0.0.0.0')
+kubeServer.setServiceParent(application)
 
-print r'export DOCKER_HOST=tcp://localhost:2375'
+print r'export KUBE_SERVER=http://localhost:8080'
