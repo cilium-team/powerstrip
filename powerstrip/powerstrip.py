@@ -215,14 +215,16 @@ class DockerProxy(proxy.ReverseProxyResource):
         def callPreHook(result, hookURL):
             if result is None:
                 newRequestBody = originalRequestBody
+                newRequestRequest = request.uri
             else:
                 newRequestBody = result["ModifiedClientRequest"]["Body"]
+                newRequestRequest = result["ModifiedClientRequest"]["Request"]
             return self.client.post(hookURL, json.dumps({
                         "PowerstripProtocolVersion": 1,
                         "Type": "pre-hook",
                         "ClientRequest": {
                             "Method": request.method,
-                            "Request": request.uri,
+                            "Request": newRequestRequest,
                             "Body": newRequestBody,
                         }
                     }), headers={'Content-Type': ['application/json']})
@@ -238,6 +240,7 @@ class DockerProxy(proxy.ReverseProxyResource):
             if result is not None:
                 requestBody = b""
                 bodyFromAdapter = result["ModifiedClientRequest"]["Body"]
+                request.uri = result["ModifiedClientRequest"]["Request"].encode("utf-8")
                 if bodyFromAdapter is not None:
                     requestBody = bodyFromAdapter.encode("utf-8")
                 request.content = StringIO.StringIO(requestBody)
@@ -253,11 +256,7 @@ class DockerProxy(proxy.ReverseProxyResource):
                     host = "%s:%d" % (self.host, self.port)
                 request.requestHeaders.setRawHeaders(b"host", [host])
             request.content.seek(0, 0)
-            qs = urlparse.urlparse(request.uri)[4]
-            if qs:
-                rest = self.path + '?' + qs
-            else:
-                rest = self.path
+            rest = request.uri
             allRequestHeaders = request.getAllHeaders()
             if allRequestHeaders.get("transfer-encoding") == "chunked":
                 del allRequestHeaders["transfer-encoding"]
